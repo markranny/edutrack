@@ -1,3 +1,4 @@
+// src/signup.js
 document.addEventListener("DOMContentLoaded", function () {
   const signupForm = document.getElementById("signupForm");
   const role = sessionStorage.getItem("selectedRole") || "student";
@@ -11,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const password = document.getElementById("password").value.trim();
     const confirmPassword = document.getElementById("confirmPassword").value.trim();
 
+    // Validation
     if (password !== confirmPassword) {
       alert("❌ Password and Confirm Password do not match.");
       return;
@@ -19,19 +21,32 @@ document.addEventListener("DOMContentLoaded", function () {
       alert("❌ Please fill all required fields.");
       return;
     }
+    if (password.length < 6) {
+      alert("❌ Password must be at least 6 characters long.");
+      return;
+    }
 
-    const response = await fetch("/api/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firstname, lastname, email, password, role })
-    });
-    const result = await response.json();
+    try {
+      // Call Tauri backend
+      const result = await window.__TAURI__.invoke("tauri_signup", {
+        payload: {
+          firstname,
+          lastname,
+          email,
+          password,
+          role
+        }
+      });
 
-    if (response.ok) {
-      alert("✅ Registration successful!");
-      window.location.href = "login.html";
-    } else {
-      alert("⚠️ " + (result.error || "Signup failed"));
+      if (result.success) {
+        alert("✅ Registration successful!");
+        window.location.href = "login.html";
+      } else {
+        alert("❌ " + result.message);
+      }
+    } catch (error) {
+      console.error("Signup error:", error);
+      alert("❌ Signup failed: " + error);
     }
   });
 });

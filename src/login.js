@@ -1,24 +1,48 @@
+// src/login.js
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("loginForm");
-  const role = sessionStorage.getItem("selectedRole");
+  const role = sessionStorage.getItem("selectedRole") || "student";
 
   loginForm.addEventListener("submit", async function (e) {
     e.preventDefault();
+    
     const email = document.querySelector('input[type="email"]').value.trim();
     const password = document.querySelector('input[type="password"]').value.trim();
 
-    const response = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role })
-    });
-    const result = await response.json();
+    if (!email || !password) {
+      alert("❌ Please fill all fields.");
+      return;
+    }
 
-    if (response.ok) {
-      alert(`✅ Welcome!`);
-      window.location.href = role === "student" ? "marking.html" : "dash.html";
-    } else {
-      alert("❌ " + (result.error || "Login failed"));
+    try {
+      // Call Tauri backend
+      const result = await window.__TAURI__.invoke("tauri_login", {
+        payload: {
+          email,
+          password,
+          role
+        }
+      });
+
+      if (result.success && result.user) {
+        // Store user data in sessionStorage
+        sessionStorage.setItem("currentUser", JSON.stringify(result.user));
+        sessionStorage.setItem("authToken", result.token || "");
+        
+        alert(`✅ Welcome, ${result.user.firstname}!`);
+        
+        // Redirect based on role
+        if (role === "student") {
+          window.location.href = "marking.html";
+        } else {
+          window.location.href = "dash.html";
+        }
+      } else {
+        alert("❌ " + result.message);
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("❌ Login failed: " + error);
     }
   });
 });

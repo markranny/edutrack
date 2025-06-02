@@ -12,12 +12,37 @@
     <div class="modal">
       <p>Are you sure you want<br><strong>to sign out?</strong></p>
       <div class="button-group">
-        <a href="index.html" class="signout">Sign out</a>
-        <a href="marking.html" class="cancel">cancel</a>
-
-
+        <button onclick="confirmLogout()" class="signout">Sign out</button>
+        <button onclick="cancelLogout()" class="cancel">Cancel</button>
       </div>
     </div>
   </div>
+
+  <script>
+    async function confirmLogout() {
+      try {
+        // Call backend logout
+        await window.__TAURI__.invoke("logout");
+        
+        // Clear frontend session data
+        sessionStorage.removeItem("currentUser");
+        sessionStorage.removeItem("authToken");
+        sessionStorage.removeItem("selectedRole");
+        
+        // Redirect to role selection
+        window.location.href = "index.html";
+      } catch (error) {
+        console.error("Logout error:", error);
+        // Still redirect even if backend call fails
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      }
+    }
+
+    function cancelLogout() {
+      // Go back to student marking page
+      window.location.href = "marking.html";
+    }
+  </script>
 </body>
 </html>

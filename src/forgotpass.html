@@ -2,25 +2,125 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Forgot Password - Edu Track</title>
   <link rel="stylesheet" href="login.css" />
 </head>
 <body>
-  <div class="login-box">
-    <h2>Forgot Password</h2>
-    <form id="requestTokenForm">
-      <input type="email" placeholder="Email" required />
-      <button type="submit">Request Reset Token</button>
-    </form>
-    <form id="resetPasswordForm" style="margin-top:30px;">
-      <input type="email" placeholder="Email" required />
-      <input name="reset_token" type="text" placeholder="Reset Token" required />
-      <input name="new_password" type="password" placeholder="New Password" required />
-      <input name="confirm_password" type="password" placeholder="Confirm Password" required />
-      <button type="submit">Reset Password</button>
-    </form>
-    <a href="login.html">Back to login</a>
+  <div class="container">
+    <div class="left-section">
+      <h1>EDU-TRACK</h1>
+      <div class="logo-circle">
+        <img src="assets/logo.jpg" alt="Edu Logo" />
+      </div>
+      <p id="greeting">Reset Your Password</p>
+    </div>
+
+    <div class="login-box">
+      <h2>Forgot Password</h2>
+      
+      <!-- Step 1: Request Reset Token -->
+      <form id="requestTokenForm" style="display: block;">
+        <input type="email" id="resetEmail" placeholder="Enter your email" required />
+        <button type="submit">Get Reset Token</button>
+      </form>
+      
+      <!-- Step 2: Reset Password with Token -->
+      <form id="resetPasswordForm" style="display: none;">
+        <input type="email" id="confirmEmail" placeholder="Confirm your email" required />
+        <input type="text" id="resetToken" placeholder="Enter reset token" required />
+        <input type="password" id="newPassword" placeholder="New password" required />
+        <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required />
+        <button type="submit">Reset Password</button>
+      </form>
+
+      <a href="login.html">Back to Login</a>
+    </div>
   </div>
-  <script src="forgotpass.js"></script>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const requestForm = document.getElementById("requestTokenForm");
+      const resetForm = document.getElementById("resetPasswordForm");
+
+      // Step 1: Request reset token
+      requestForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const email = document.getElementById("resetEmail").value.trim();
+
+        if (!email) {
+          alert("❌ Please enter your email.");
+          return;
+        }
+
+        try {
+          const result = await window.__TAURI__.invoke("forgot_password", {
+            payload: { email }
+          });
+
+          if (result.success) {
+            alert("✅ " + result.message);
+            
+            // Show reset form and hide request form
+            requestForm.style.display = "none";
+            resetForm.style.display = "block";
+            
+            // Pre-fill email in reset form
+            document.getElementById("confirmEmail").value = email;
+          } else {
+            alert("❌ " + result.message);
+          }
+        } catch (error) {
+          console.error("Forgot password error:", error);
+          alert("❌ Error: " + error);
+        }
+      });
+
+      // Step 2: Reset password with token
+      resetForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        
+        const email = document.getElementById("confirmEmail").value.trim();
+        const resetToken = document.getElementById("resetToken").value.trim();
+        const newPassword = document.getElementById("newPassword").value.trim();
+        const confirmNewPassword = document.getElementById("confirmNewPassword").value.trim();
+
+        if (!email || !resetToken || !newPassword || !confirmNewPassword) {
+          alert("❌ Please fill all fields.");
+          return;
+        }
+
+        if (newPassword !== confirmNewPassword) {
+          alert("❌ Passwords do not match.");
+          return;
+        }
+
+        if (newPassword.length < 6) {
+          alert("❌ Password must be at least 6 characters long.");
+          return;
+        }
+
+        try {
+          const result = await window.__TAURI__.invoke("reset_password", {
+            payload: {
+              email,
+              reset_token: resetToken,
+              new_password: newPassword
+            }
+          });
+
+          if (result.success) {
+            alert("✅ " + result.message);
+            window.location.href = "login.html";
+          } else {
+            alert("❌ " + result.message);
+          }
+        } catch (error) {
+          console.error("Reset password error:", error);
+          alert("❌ Error: " + error);
+        }
+      });
+    });
+  </script>
 </body>
 </html>
