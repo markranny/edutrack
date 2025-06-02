@@ -38,10 +38,30 @@
     </div>
   </div>
 
+  <!-- Tauri API -->
+  <script type="module">
+    import { invoke } from '@tauri-apps/api/core'
+    window.__TAURI__ = { invoke }
+  </script>
+
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const requestForm = document.getElementById("requestTokenForm");
       const resetForm = document.getElementById("resetPasswordForm");
+
+      // Wait for Tauri to be ready
+      function waitForTauri() {
+        return new Promise((resolve) => {
+          const checkTauri = () => {
+            if (window.__TAURI__ && window.__TAURI__.invoke) {
+              resolve();
+            } else {
+              setTimeout(checkTauri, 100);
+            }
+          };
+          checkTauri();
+        });
+      }
 
       // Step 1: Request reset token
       requestForm.addEventListener("submit", async function (e) {
@@ -54,6 +74,8 @@
         }
 
         try {
+          await waitForTauri();
+          
           const result = await window.__TAURI__.invoke("forgot_password", {
             payload: { email }
           });
@@ -101,6 +123,8 @@
         }
 
         try {
+          await waitForTauri();
+          
           const result = await window.__TAURI__.invoke("reset_password", {
             payload: {
               email,

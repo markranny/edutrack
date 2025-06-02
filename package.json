@@ -1,12 +1,23 @@
 {
   "name": "edutrack",
-  "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "description": "Educational tracking application built with Tauri",
+  "main": "index.js",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "migrate": "cd src-tauri && cargo run --bin migration"
   },
+  "keywords": ["tauri", "education", "tracking", "rust", "sqlite"],
+  "author": "EduTrack Team",
+  "license": "MIT",
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
   }
 }

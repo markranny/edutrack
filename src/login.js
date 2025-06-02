@@ -1,13 +1,29 @@
 // src/login.js
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("loginForm");
+  const emailInput = document.getElementById("emailInput");
+  const passwordInput = document.getElementById("passwordInput");
   const role = sessionStorage.getItem("selectedRole") || "student";
+
+  // Wait for Tauri to be ready
+  function waitForTauri() {
+    return new Promise((resolve) => {
+      const checkTauri = () => {
+        if (window.__TAURI__ && window.__TAURI__.invoke) {
+          resolve();
+        } else {
+          setTimeout(checkTauri, 100);
+        }
+      };
+      checkTauri();
+    });
+  }
 
   loginForm.addEventListener("submit", async function (e) {
     e.preventDefault();
     
-    const email = document.querySelector('input[type="email"]').value.trim();
-    const password = document.querySelector('input[type="password"]').value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
 
     if (!email || !password) {
       alert("❌ Please fill all fields.");
@@ -15,6 +31,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     try {
+      // Wait for Tauri to be ready
+      await waitForTauri();
+      
+      console.log("Attempting login with:", { email, role });
+      
       // Call Tauri backend
       const result = await window.__TAURI__.invoke("tauri_login", {
         payload: {
@@ -23,6 +44,8 @@ document.addEventListener("DOMContentLoaded", function () {
           role
         }
       });
+
+      console.log("Login result:", result);
 
       if (result.success && result.user) {
         // Store user data in sessionStorage
@@ -38,7 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
           window.location.href = "dash.html";
         }
       } else {
-        alert("❌ " + result.message);
+        alert("❌ " + (result.message || "Login failed"));
       }
     } catch (error) {
       console.error("Login error:", error);

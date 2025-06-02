@@ -10,20 +10,23 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "edutrack",
-        "width": 800,
-        "height": 600
+        "title": "EduTrack",
+        "width": 1024,
+        "height": 768,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/EEE.ico"
+      "icons/icon.png",
+      "icons/icon.ico"
     ]
   }
 }

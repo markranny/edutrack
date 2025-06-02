@@ -3,6 +3,20 @@ document.addEventListener("DOMContentLoaded", function () {
   const signupForm = document.getElementById("signupForm");
   const role = sessionStorage.getItem("selectedRole") || "student";
 
+  // Wait for Tauri to be ready
+  function waitForTauri() {
+    return new Promise((resolve) => {
+      const checkTauri = () => {
+        if (window.__TAURI__ && window.__TAURI__.invoke) {
+          resolve();
+        } else {
+          setTimeout(checkTauri, 100);
+        }
+      };
+      checkTauri();
+    });
+  }
+
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
 
@@ -27,6 +41,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     try {
+      // Wait for Tauri to be ready
+      await waitForTauri();
+      
+      console.log("Attempting signup with:", { firstname, lastname, email, role });
+      
       // Call Tauri backend
       const result = await window.__TAURI__.invoke("tauri_signup", {
         payload: {
@@ -38,11 +57,13 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
 
+      console.log("Signup result:", result);
+
       if (result.success) {
         alert("✅ Registration successful!");
         window.location.href = "login.html";
       } else {
-        alert("❌ " + result.message);
+        alert("❌ " + (result.message || "Registration failed"));
       }
     } catch (error) {
       console.error("Signup error:", error);

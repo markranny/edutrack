@@ -12,11 +12,10 @@
     </div>
     <div id="notification" class="hidden">Registration successful!</div>
 
-  
     <div class="signup-box">
       <h2>Sign Up</h2>
       <form id="signupForm">
-        <input id="firstname" type="text" placeholder="Fisrt name" required />
+        <input id="firstname" type="text" placeholder="First name" required />
         <input id="lastname" type="text" placeholder="Last name" required />
         <input id="email" type="email" placeholder="Email" required />
         <input id="password" type="password" placeholder="Password" required />
@@ -34,7 +33,13 @@
         <a href="#">Privacy Policy</a>.
       </div>
     </div>
-  
+
+    <!-- Tauri API -->
+    <script type="module">
+      import { invoke } from '@tauri-apps/api/core'
+      window.__TAURI__ = { invoke }
+    </script>
+    
     <script src="signup.js"></script>
   </body>
-  
+</html>
