@@ -1,13 +1,13 @@
 // src-tauri/src/lib.rs
-use tauri::Manager;
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 use bcrypt::{hash, verify, DEFAULT_COST};
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use chrono::{Duration, Utc};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, LazyLock};
 use rand::Rng;
+use std::path::PathBuf;
 
 // Data structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -68,15 +68,26 @@ struct AuthResponse {
     token: Option<String>,
 }
 
-// Global state for reset tokens and current user
-static RESET_TOKENS: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
-static CURRENT_USER: Mutex<Option<User>> = Mutex::new(None);
+// Global state for reset tokens and current user using LazyLock
+static RESET_TOKENS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static CURRENT_USER: LazyLock<Mutex<Option<User>>> = LazyLock::new(|| Mutex::new(None));
 
 const JWT_SECRET: &str = "your-secret-key-here-make-it-strong-in-production";
 
-// Database initialization
+// Database initialization with proper path
+fn get_database_path() -> PathBuf {
+    let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push("edutrack");
+    std::fs::create_dir_all(&path).ok();
+    path.push("database.db");
+    path
+}
+
 fn init_database() -> Result<Connection> {
-    let conn = Connection::open("my_database.db")?;
+    let db_path = get_database_path();
+    println!("Database path: {:?}", db_path);
+    
+    let conn = Connection::open(&db_path)?;
     
     // Create the users table with the correct schema
     conn.execute(
@@ -86,7 +97,8 @@ fn init_database() -> Result<Connection> {
             lastname TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
-            role TEXT NOT NULL
+            role TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
@@ -114,6 +126,15 @@ fn create_jwt_token(email: &str, role: &str) -> Result<String, jsonwebtoken::err
     )
 }
 
+// Validate JWT token
+fn validate_jwt_token(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(JWT_SECRET.as_ref()),
+        &Validation::default(),
+    ).map(|data| data.claims)
+}
+
 // Generate random reset token
 fn generate_reset_token() -> String {
     let mut rng = rand::thread_rng();
@@ -123,15 +144,35 @@ fn generate_reset_token() -> String {
 // Tauri commands
 #[tauri::command]
 async fn tauri_signup(payload: SignupRequest) -> Result<AuthResponse, String> {
-    println!("Signup attempt for: {}", payload.email);
+    println!("Signup attempt for: {} as {}", payload.email, payload.role);
     
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
+    // Validate input
+    if payload.firstname.trim().is_empty() || payload.lastname.trim().is_empty() {
+        return Ok(AuthResponse {
+            success: false,
+            message: "First name and last name are required".to_string(),
+            user: None,
+            token: None,
+        });
+    }
+    
+    if payload.password.len() < 6 {
+        return Ok(AuthResponse {
+            success: false,
+            message: "Password must be at least 6 characters long".to_string(),
+            user: None,
+            token: None,
+        });
+    }
+    
     // Check if user already exists
+    let email_lower = payload.email.trim().to_lowercase();
     let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")
         .map_err(|e| format!("Database error: {}", e))?;
     
-    let user_exists = stmt.exists(&[&payload.email])
+    let user_exists = stmt.exists(&[&email_lower])
         .map_err(|e| format!("Database error: {}", e))?;
     
     if user_exists {
@@ -147,13 +188,18 @@ async fn tauri_signup(payload: SignupRequest) -> Result<AuthResponse, String> {
     let hashed_password = hash(&payload.password, DEFAULT_COST)
         .map_err(|e| format!("Password hashing error: {}", e))?;
     
+    // Prepare values for insertion
+    let firstname = payload.firstname.trim();
+    let lastname = payload.lastname.trim();
+    let role = &payload.role;
+    
     // Insert new user
     conn.execute(
         "INSERT INTO users (firstname, lastname, email, password, role) VALUES (?1, ?2, ?3, ?4, ?5)",
-        &[&payload.firstname, &payload.lastname, &payload.email, &hashed_password, &payload.role],
+        &[firstname, lastname, &email_lower, &hashed_password, role],
     ).map_err(|e| format!("Database error: {}", e))?;
     
-    println!("User registered successfully: {}", payload.email);
+    println!("User registered successfully: {}", email_lower);
     
     Ok(AuthResponse {
         success: true,
@@ -169,10 +215,12 @@ async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
     
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
+    let email = payload.email.trim().to_lowercase();
+    
     let mut stmt = conn.prepare("SELECT id, firstname, lastname, email, password, role FROM users WHERE email = ?1 AND role = ?2")
         .map_err(|e| format!("Database error: {}", e))?;
     
-    let user_result = stmt.query_row(&[&payload.email, &payload.role], |row| {
+    let user_result = stmt.query_row(&[&email, &payload.role], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
@@ -226,7 +274,7 @@ async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
             }
         }
         Err(_) => {
-            println!("User not found: {}", payload.email);
+            println!("User not found: {} with role {}", payload.email, payload.role);
             Ok(AuthResponse {
                 success: false,
                 message: "Invalid credentials".to_string(),
@@ -258,6 +306,15 @@ async fn change_password(payload: ChangePasswordRequest) -> Result<AuthResponse,
         }
     };
     drop(current_user_guard);
+    
+    if payload.new_password.len() < 6 {
+        return Ok(AuthResponse {
+            success: false,
+            message: "New password must be at least 6 characters long".to_string(),
+            user: None,
+            token: None,
+        });
+    }
     
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
@@ -306,11 +363,13 @@ async fn change_password(payload: ChangePasswordRequest) -> Result<AuthResponse,
 async fn forgot_password(payload: ForgotPasswordRequest) -> Result<AuthResponse, String> {
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
+    let email = payload.email.trim().to_lowercase();
+    
     // Check if user exists
     let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")
         .map_err(|e| format!("Database error: {}", e))?;
     
-    let user_exists = stmt.exists(&[&payload.email])
+    let user_exists = stmt.exists(&[&email])
         .map_err(|e| format!("Database error: {}", e))?;
     
     if !user_exists {
@@ -328,10 +387,10 @@ async fn forgot_password(payload: ForgotPasswordRequest) -> Result<AuthResponse,
     // Store reset token
     {
         let mut tokens = RESET_TOKENS.lock().unwrap();
-        tokens.insert(payload.email.clone(), reset_token.clone());
+        tokens.insert(email.clone(), reset_token.clone());
     }
     
-    println!("Reset token generated for: {} - Token: {}", payload.email, reset_token);
+    println!("Reset token generated for: {} - Token: {}", email, reset_token);
     
     Ok(AuthResponse {
         success: true,
@@ -343,10 +402,21 @@ async fn forgot_password(payload: ForgotPasswordRequest) -> Result<AuthResponse,
 
 #[tauri::command]
 async fn reset_password(payload: ResetPasswordRequest) -> Result<AuthResponse, String> {
+    let email = payload.email.trim().to_lowercase();
+    
+    if payload.new_password.len() < 6 {
+        return Ok(AuthResponse {
+            success: false,
+            message: "New password must be at least 6 characters long".to_string(),
+            user: None,
+            token: None,
+        });
+    }
+    
     // Verify reset token
     {
         let tokens = RESET_TOKENS.lock().unwrap();
-        match tokens.get(&payload.email) {
+        match tokens.get(&email) {
             Some(stored_token) if *stored_token == payload.reset_token => {},
             _ => {
                 return Ok(AuthResponse {
@@ -368,16 +438,16 @@ async fn reset_password(payload: ResetPasswordRequest) -> Result<AuthResponse, S
     // Update password
     conn.execute(
         "UPDATE users SET password = ?1 WHERE email = ?2",
-        &[&new_hashed_password, &payload.email],
+        &[&new_hashed_password, &email],
     ).map_err(|e| format!("Database error: {}", e))?;
     
     // Remove reset token
     {
         let mut tokens = RESET_TOKENS.lock().unwrap();
-        tokens.remove(&payload.email);
+        tokens.remove(&email);
     }
     
-    println!("Password reset successfully for: {}", payload.email);
+    println!("Password reset successfully for: {}", email);
     
     Ok(AuthResponse {
         success: true,

@@ -883,6 +883,7 @@ version = "0.1.0"
 dependencies = [
  "bcrypt",
  "chrono",
+ "dirs",
  "jsonwebtoken",
  "rand 0.8.5",
  "rusqlite",
