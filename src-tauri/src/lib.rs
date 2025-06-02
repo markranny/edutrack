@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use rand::Rng;
 
 // Data structures
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct User {
     id: i64,
     firstname: String,
@@ -68,16 +68,17 @@ struct AuthResponse {
     token: Option<String>,
 }
 
-// Global state for reset tokens
+// Global state for reset tokens and current user
 static RESET_TOKENS: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 static CURRENT_USER: Mutex<Option<User>> = Mutex::new(None);
 
-const JWT_SECRET: &str = "your-secret-key-here-make-it-strong";
+const JWT_SECRET: &str = "your-secret-key-here-make-it-strong-in-production";
 
 // Database initialization
 fn init_database() -> Result<Connection> {
     let conn = Connection::open("my_database.db")?;
     
+    // Create the users table with the correct schema
     conn.execute(
         "CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,6 +123,8 @@ fn generate_reset_token() -> String {
 // Tauri commands
 #[tauri::command]
 async fn tauri_signup(payload: SignupRequest) -> Result<AuthResponse, String> {
+    println!("Signup attempt for: {}", payload.email);
+    
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
     // Check if user already exists
@@ -150,6 +153,8 @@ async fn tauri_signup(payload: SignupRequest) -> Result<AuthResponse, String> {
         &[&payload.firstname, &payload.lastname, &payload.email, &hashed_password, &payload.role],
     ).map_err(|e| format!("Database error: {}", e))?;
     
+    println!("User registered successfully: {}", payload.email);
+    
     Ok(AuthResponse {
         success: true,
         message: "User registered successfully".to_string(),
@@ -160,6 +165,8 @@ async fn tauri_signup(payload: SignupRequest) -> Result<AuthResponse, String> {
 
 #[tauri::command]
 async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
+    println!("Login attempt for: {} as {}", payload.email, payload.role);
+    
     let conn = init_database().map_err(|e| format!("Database error: {}", e))?;
     
     let mut stmt = conn.prepare("SELECT id, firstname, lastname, email, password, role FROM users WHERE email = ?1 AND role = ?2")
@@ -200,6 +207,8 @@ async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
                 let token = create_jwt_token(&email, &role)
                     .map_err(|e| format!("Token creation error: {}", e))?;
                 
+                println!("Login successful for: {}", email);
+                
                 Ok(AuthResponse {
                     success: true,
                     message: "Login successful".to_string(),
@@ -207,6 +216,7 @@ async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
                     token: Some(token),
                 })
             } else {
+                println!("Invalid password for: {}", payload.email);
                 Ok(AuthResponse {
                     success: false,
                     message: "Invalid credentials".to_string(),
@@ -215,12 +225,15 @@ async fn tauri_login(payload: LoginRequest) -> Result<AuthResponse, String> {
                 })
             }
         }
-        Err(_) => Ok(AuthResponse {
-            success: false,
-            message: "Invalid credentials".to_string(),
-            user: None,
-            token: None,
-        }),
+        Err(_) => {
+            println!("User not found: {}", payload.email);
+            Ok(AuthResponse {
+                success: false,
+                message: "Invalid credentials".to_string(),
+                user: None,
+                token: None,
+            })
+        }
     }
 }
 
@@ -279,6 +292,8 @@ async fn change_password(payload: ChangePasswordRequest) -> Result<AuthResponse,
         &[&new_hashed_password, &current_user.email],
     ).map_err(|e| format!("Database error: {}", e))?;
     
+    println!("Password changed successfully for: {}", current_user.email);
+    
     Ok(AuthResponse {
         success: true,
         message: "Password changed successfully".to_string(),
@@ -315,6 +330,8 @@ async fn forgot_password(payload: ForgotPasswordRequest) -> Result<AuthResponse,
         let mut tokens = RESET_TOKENS.lock().unwrap();
         tokens.insert(payload.email.clone(), reset_token.clone());
     }
+    
+    println!("Reset token generated for: {} - Token: {}", payload.email, reset_token);
     
     Ok(AuthResponse {
         success: true,
@@ -360,6 +377,8 @@ async fn reset_password(payload: ResetPasswordRequest) -> Result<AuthResponse, S
         tokens.remove(&payload.email);
     }
     
+    println!("Password reset successfully for: {}", payload.email);
+    
     Ok(AuthResponse {
         success: true,
         message: "Password reset successfully".to_string(),
@@ -372,6 +391,8 @@ async fn reset_password(payload: ResetPasswordRequest) -> Result<AuthResponse, S
 async fn logout() -> Result<AuthResponse, String> {
     let mut current_user = CURRENT_USER.lock().unwrap();
     *current_user = None;
+    
+    println!("User logged out successfully");
     
     Ok(AuthResponse {
         success: true,
